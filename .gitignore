@@ -37,3 +37,4 @@ Thumbs.db
 /tmp/
 *.tmp
 *.log
+_codeql_*
