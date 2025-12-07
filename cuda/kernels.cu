@@ -277,3 +277,74 @@ __global__ void rotateKernel(const uchar* input, uchar* output,
 
 } // namespace cuda
 } // namespace iproc
+
+// ============================================================================
+// KERNEL LAUNCH WRAPPERS (for C++ linkage)
+// ============================================================================
+
+extern "C" {
+
+void launchGaussianBlurHorizontal(const uchar* input, uchar* output,
+                                  int width, int height, int channels,
+                                  int kernel_size, cudaStream_t stream) {
+    dim3 block(16, 16);
+    dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+    
+    iproc::cuda::gaussianBlurHorizontalKernel<<<grid, block, 0, stream>>>(
+        input, output, width, height, channels, kernel_size);
+}
+
+void launchGaussianBlurVertical(const uchar* input, uchar* output,
+                                int width, int height, int channels,
+                                int kernel_size, cudaStream_t stream) {
+    dim3 block(16, 16);
+    dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+    
+    iproc::cuda::gaussianBlurVerticalKernel<<<grid, block, 0, stream>>>(
+        input, output, width, height, channels, kernel_size);
+}
+
+void launchMedianFilter(const uchar* input, uchar* output,
+                       int width, int height, int channels,
+                       int kernel_size, cudaStream_t stream) {
+    dim3 block(16, 16);
+    dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+    
+    iproc::cuda::medianFilterKernel<<<grid, block, 0, stream>>>(
+        input, output, width, height, channels, kernel_size);
+}
+
+void launchConvolve2D(const uchar* input, uchar* output,
+                     int width, int height, int channels,
+                     int kernel_size, cudaStream_t stream) {
+    dim3 block(16, 16);
+    dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+    
+    int tile_width = 16 + kernel_size - 1;
+    size_t shared_mem_size = tile_width * tile_width * sizeof(float);
+    
+    iproc::cuda::convolve2DKernel<<<grid, block, shared_mem_size, stream>>>(
+        input, output, width, height, channels, kernel_size);
+}
+
+void launchSobel(const uchar* input, uchar* output,
+                int width, int height, cudaStream_t stream) {
+    dim3 block(16, 16);
+    dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+    
+    iproc::cuda::sobelKernel<<<grid, block, 0, stream>>>(
+        input, output, width, height);
+}
+
+void launchRotate(const uchar* input, uchar* output,
+                 int width, int height, int channels,
+                 float cos_angle, float sin_angle, int cx, int cy,
+                 cudaStream_t stream) {
+    dim3 block(16, 16);
+    dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+    
+    iproc::cuda::rotateKernel<<<grid, block, 0, stream>>>(
+        input, output, width, height, channels, cos_angle, sin_angle, cx, cy);
+}
+
+} // extern "C"
