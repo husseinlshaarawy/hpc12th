@@ -1,0 +1,215 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, copilot/** ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build and Test (Ubuntu, OpenMP)
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        build_type: [Release, Debug]
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libopencv-dev
+    
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DBUILD_OPENMP=ON \
+          -DBUILD_MPI=OFF \
+          -DBUILD_CUDA=OFF \
+          -DBUILD_TESTS=ON \
+          -DBUILD_BENCHMARKS=ON
+    
+    - name: Build
+      run: |
+        cd build
+        make -j$(nproc)
+    
+    - name: Run Tests
+      run: |
+        cd build
+        ctest --output-on-failure --verbose
+        # Run tests from project root for relative paths
+        cd ..
+        ./build/bin/unit_tests
+    
+    - name: Test Serial CLI
+      run: |
+        # Test basic operations with test images
+        ./build/bin/iproc_demo grayscale tests/data/test_16x16_color.png /tmp/test_gray.png
+        ./build/bin/iproc_demo invert tests/data/test_16x16.png /tmp/test_invert.png
+        ./build/bin/iproc_demo gaussian-blur tests/data/test_16x16.png /tmp/test_blur.png 3 1.0
+        ls -lh /tmp/test_*.png
+    
+    - name: Test OpenMP CLI
+      run: |
+        ./build/bin/iproc_omp_demo gaussian-blur tests/data/test_16x16.png /tmp/test_omp_blur.png 3 1.0 2
+        ./build/bin/iproc_omp_demo median tests/data/test_16x16.png /tmp/test_omp_median.png 3 2
+        ls -lh /tmp/test_omp_*.png
+
+  build-mpi:
+    name: Build with MPI (Optional)
+    runs-on: ubuntu-latest
+    if: ${{ false }}  # Disabled by default, enable for MPI testing
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libopencv-dev libopenmpi-dev
+    
+    - name: Configure CMake with MPI
+      run: |
+        mkdir build
+        cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_OPENMP=ON \
+          -DBUILD_MPI=ON \
+          -DBUILD_CUDA=OFF \
+          -DBUILD_TESTS=ON
+    
+    - name: Build
+      run: |
+        cd build
+        make -j$(nproc)
+    
+    - name: Test MPI CLI
+      run: |
+        mpirun --allow-run-as-root -np 2 ./build/bin/iproc_mpi_demo gaussian-blur tests/data/test_16x16.png /tmp/test_mpi_blur.png 3 1.0
+        ls -lh /tmp/test_mpi_*.png
+
+  build-cuda:
+    name: Build with CUDA (Optional)
+    runs-on: ubuntu-latest
+    if: ${{ false }}  # Disabled by default, requires CUDA-enabled runner
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libopencv-dev
+        # CUDA toolkit installation would go here
+    
+    - name: Configure CMake with CUDA
+      run: |
+        mkdir build
+        cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_OPENMP=ON \
+          -DBUILD_MPI=OFF \
+          -DBUILD_CUDA=ON \
+          -DBUILD_TESTS=ON
+    
+    - name: Build
+      run: |
+        cd build
+        make -j$(nproc)
+
+  benchmarks:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libopencv-dev python3 python3-numpy python3-pil
+    
+    - name: Create Test Image
+      run: |
+        python3 << 'EOF'
+        import numpy as np
+        from PIL import Image
+        # Create larger test image for benchmarking (256x256)
+        img_data = np.random.randint(0, 256, (256, 256), dtype=np.uint8)
+        img = Image.fromarray(img_data)
+        img.save('test_bench.png')
+        EOF
+    
+    - name: Build
+      run: |
+        mkdir build && cd build
+        cmake .. -DBUILD_OPENMP=ON -DBUILD_BENCHMARKS=ON
+        make -j$(nproc)
+    
+    - name: Run Serial Benchmark
+      run: |
+        ./build/bin/benchmark_serial test_bench.png benchmark_serial.csv
+        cat benchmark_serial.csv
+    
+    - name: Run OpenMP Benchmark
+      run: |
+        ./build/bin/benchmark_openmp test_bench.png benchmark_openmp.csv
+        cat benchmark_openmp.csv
+    
+    - name: Upload Benchmark Results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: |
+          benchmark_serial.csv
+          benchmark_openmp.csv
+
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Check File Structure
+      run: |
+        echo "Checking project structure..."
+        test -f CMakeLists.txt
+        test -d include
+        test -d src
+        test -d tests
+        test -d docs
+        test -d tools/benchmark
+        test -f README.md
+        test -f docs/memory_sync_checklist.md
+        test -f docs/plan.md
+        echo "✓ Project structure OK"
+    
+    - name: Check for TODO/FIXME
+      run: |
+        echo "Checking for unresolved TODOs/FIXMEs..."
+        ! grep -r "TODO\|FIXME" src/ include/ || echo "Warning: Found TODOs/FIXMEs"
+    
+    - name: Line Count Statistics
+      run: |
+        echo "=== Code Statistics ==="
+        echo "C++ Headers:"
+        find include -name "*.h" -exec wc -l {} + | tail -1
+        echo "C++ Sources:"
+        find src -name "*.cpp" -exec wc -l {} + | tail -1
+        echo "CUDA:"
+        find cuda -name "*.cu" -o -name "*.cpp" -exec wc -l {} + 2>/dev/null | tail -1 || echo "0 (CUDA files not present)"
+        echo "Tests:"
+        find tests -name "*.cpp" -exec wc -l {} + | tail -1
+        echo "Total LOC:"
+        find . -name "*.cpp" -o -name "*.h" -o -name "*.cu" | xargs wc -l | tail -1
