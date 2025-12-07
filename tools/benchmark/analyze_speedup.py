@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 """
 Analyze speedup from benchmark CSV files
+
+Requirements: Python 3.x (no external dependencies)
 """
 
 import sys
 import csv
 from pathlib import Path
 from collections import defaultdict
+
+def check_requirements():
+    """Check if Python version is sufficient"""
+    if sys.version_info < (3, 6):
+        print("Error: Python 3.6 or newer is required")
+        sys.exit(1)
 
 def load_benchmark(filepath):
     """Load benchmark CSV file"""
@@ -117,6 +125,8 @@ def analyze_cuda(serial_file, cuda_file):
             print(f"  Speedup: {speedup:.2f}x")
 
 def main():
+    check_requirements()
+    
     if len(sys.argv) < 2:
         print("Usage: python3 analyze_speedup.py <benchmark_files...>")
         print("\nExample:")

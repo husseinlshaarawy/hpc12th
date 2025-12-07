@@ -48,7 +48,20 @@ echo "Input: $INPUT_IMAGE"
 echo "Output: $OUTPUT_IMAGE"
 echo ""
 
-mpirun -np $NUM_PROCESSES $MPI_EXEC $OPERATION $INPUT_IMAGE $OUTPUT_IMAGE "$@"
+# Check if mpirun is available
+if ! command -v mpirun &> /dev/null; then
+    echo "Error: mpirun not found. Please install OpenMPI:"
+    echo "  sudo apt-get install openmpi-bin libopenmpi-dev"
+    exit 1
+fi
+
+# Run with appropriate flags
+if [ -n "$MPI_ALLOW_ROOT" ] || id -u | grep -q '^0$'; then
+    # Running as root or MPI_ALLOW_ROOT is set
+    mpirun --allow-run-as-root -np $NUM_PROCESSES $MPI_EXEC $OPERATION $INPUT_IMAGE $OUTPUT_IMAGE "$@"
+else
+    mpirun -np $NUM_PROCESSES $MPI_EXEC $OPERATION $INPUT_IMAGE $OUTPUT_IMAGE "$@"
+fi
 
 echo ""
 echo "Done! Output saved to $OUTPUT_IMAGE"

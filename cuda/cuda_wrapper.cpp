@@ -353,8 +353,29 @@ cv::Mat scale(const cv::Mat& src, double scale_x, double scale_y) {
 }
 
 cv::Mat chainFilters(const cv::Mat& src, const std::vector<std::string>& operations) {
-    // TODO: Implement filter chaining to keep data on GPU
-    return src.clone();
+    // Filter chaining to keep data on GPU between operations
+    // Note: This is a simplified implementation. Full implementation would
+    // keep data on device memory across multiple kernel launches.
+    
+    if (!g_initialized) {
+        throw std::runtime_error("CUDA not initialized. Call initialize() first.");
+    }
+    
+    cv::Mat result = src.clone();
+    
+    // Apply filters sequentially (could be optimized to stay on GPU)
+    for (const auto& op : operations) {
+        if (op == "gaussian_blur") {
+            result = gaussianBlur(result, 5, 1.0);
+        } else if (op == "median") {
+            result = medianFilter(result, 5);
+        } else if (op == "sobel") {
+            result = sobelEdgeDetection(result, 3);
+        }
+        // Add more operations as needed
+    }
+    
+    return result;
 }
 
 } // namespace cuda

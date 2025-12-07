@@ -17,6 +17,15 @@ cd $DEMO_DIR
 
 # Generate a test image using Python
 echo "1. Creating test image (256x256)..."
+
+# Check if Python modules are available
+python3 -c "import numpy, PIL" 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "Error: Required Python modules not found (numpy, PIL)"
+    echo "Please install: sudo apt-get install python3-numpy python3-pil"
+    exit 1
+fi
+
 python3 << 'EOF'
 import numpy as np
 from PIL import Image, ImageDraw
